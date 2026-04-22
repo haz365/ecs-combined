@@ -1,0 +1,86 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'docker/**'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-2
+  AWS_ACCOUNT: 989346120260
+  ECR_REGISTRY: 989346120260.dkr.ecr.eu-west-2.amazonaws.com
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, worker, dashboard]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
+          aws-region: eu-west-2
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -f docker/${{ matrix.service }}.Dockerfile \
+            -t $ECR_REGISTRY/ecs-combined/${{ matrix.service }}:${{ steps.tag.outputs.sha }} \
+            .
+
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/ecs-combined/${{ matrix.service }}:${{ steps.tag.outputs.sha }}
+          format: table
+          exit-code: 1
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/ecs-combined/${{ matrix.service }}:${{ steps.tag.outputs.sha }}
+          format: spdx-json
+          output: sbom-${{ matrix.service }}.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.json
+
+      - name: Push image
+        run: |
+          docker push $ECR_REGISTRY/ecs-combined/${{ matrix.service }}:${{ steps.tag.outputs.sha }}
+
+      - name: Save image tag
+        run: echo "${{ steps.tag.outputs.sha }}" > image-tag-${{ matrix.service }}.txt
+
+      - name: Upload image tag
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-tag-${{ matrix.service }}
+          path: image-tag-${{ matrix.service }}.txt

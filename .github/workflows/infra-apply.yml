@@ -1,0 +1,75 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply-dev:
+    name: Apply dev
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
+          aws-region: eu-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        working-directory: infra/environments/dev
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: infra/environments/dev
+        run: |
+          terraform apply \
+            -var-file=terraform.tfvars \
+            -auto-approve
+
+  apply-prod:
+    name: Apply prod
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: apply-dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
+          aws-region: eu-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        working-directory: infra/environments/prod
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: infra/environments/prod
+        run: |
+          terraform apply \
+            -var-file=terraform.tfvars \
+            -auto-approve

@@ -1,0 +1,145 @@
+name: Deploy to ECS
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Images"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to deploy
+        required: true
+
+env:
+  AWS_REGION: eu-west-2
+  AWS_ACCOUNT: 989346120260
+  ECR_REGISTRY: 989346120260.dkr.ecr.eu-west-2.amazonaws.com
+  CLUSTER: ecs-combined-dev
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    strategy:
+      matrix:
+        service: [api, worker, dashboard]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
+          aws-region: eu-west-2
+
+      - name: Get image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sha=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ecs-combined-dev-${{ matrix.service }} \
+            --region $AWS_REGION \
+            --query taskDefinition \
+            --output json > task-def.json
+
+      - name: Update image in task definition
+        run: |
+          NEW_IMAGE="$ECR_REGISTRY/ecs-combined/${{ matrix.service }}:${{ steps.tag.outputs.sha }}"
+          python3 -c "
+          import json
+          with open('task-def.json') as f:
+              td = json.load(f)
+          td['containerDefinitions'][0]['image'] = '$NEW_IMAGE'
+          for key in ['taskDefinitionArn','revision','status','requiresAttributes','compatibilities','registeredAt','registeredBy']:
+              td.pop(key, None)
+          with open('task-def-new.json', 'w') as f:
+              json.dump(td, f)
+          "
+
+      - name: Register new task definition
+        id: register
+        run: |
+          ARN=$(aws ecs register-task-definition \
+            --region $AWS_REGION \
+            --cli-input-json file://task-def-new.json \
+            --query taskDefinition.taskDefinitionArn \
+            --output text)
+          echo "arn=$ARN" >> $GITHUB_OUTPUT
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster $CLUSTER \
+            --service ecs-combined-dev-${{ matrix.service }} \
+            --task-definition ${{ steps.register.outputs.arn }} \
+            --region $AWS_REGION \
+            --no-cli-pager
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster $CLUSTER \
+            --services ecs-combined-dev-${{ matrix.service }} \
+            --region $AWS_REGION
+
+      - name: Smoke test
+        if: matrix.service != 'worker'
+        run: |
+          ALB=$(aws elbv2 describe-load-balancers \
+            --region $AWS_REGION \
+            --names ecs-combined-dev \
+            --query "LoadBalancers[0].DNSName" \
+            --output text)
+
+          if [ "${{ matrix.service }}" = "api" ]; then
+            PORT_PATH="/health"
+          else
+            PORT_PATH="/health"
+          fi
+
+          echo "Hitting http://$ALB$PORT_PATH"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB$PORT_PATH)
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed with status $STATUS, retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 5 attempts"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed — rolling back ${{ matrix.service }}"
+          PREV_TASK=$(aws ecs describe-services \
+            --cluster $CLUSTER \
+            --services ecs-combined-dev-${{ matrix.service }} \
+            --region $AWS_REGION \
+            --query "services[0].deployments[-1].taskDefinition" \
+            --output text)
+
+          aws ecs update-service \
+            --cluster $CLUSTER \
+            --service ecs-combined-dev-${{ matrix.service }} \
+            --task-definition $PREV_TASK \
+            --region $AWS_REGION \
+            --no-cli-pager
+          echo "Rolled back to $PREV_TASK"
