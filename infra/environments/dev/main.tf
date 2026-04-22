@@ -171,7 +171,7 @@ module "ecs_api" {
   alb_sg_id          = module.alb_waf.alb_sg_id
 
   service_name   = "api"
-  image_uri      = "${module.ecr.repository_urls["api"]}:latest"
+  image_uri = "${module.ecr.repository_urls["api"]}:placeholder"
   container_port = 8080
   cpu            = 256
   memory         = 512
@@ -192,7 +192,7 @@ module "ecs_api" {
     { name = "REDIS_TLS",  value = "true" },
     { name = "AWS_REGION", value = var.aws_region },
     { name = "SQS_QUEUE_URL", value = module.sqs.queue_url },
-    { name = "BASE_URL",   value = "https://app.dev.${var.domain}" },
+    { name = "BASE_URL", value = var.base_url },
   ]
 
   secrets = [
@@ -213,7 +213,7 @@ module "ecs_worker" {
   alb_sg_id          = module.alb_waf.alb_sg_id
 
   service_name         = "worker"
-  image_uri            = "${module.ecr.repository_urls["worker"]}:latest"
+  image_uri = "${module.ecr.repository_urls["worker"]}:placeholder" 
   container_port       = 9091
   cpu                  = 256
   memory               = 512
@@ -252,7 +252,7 @@ module "ecs_dashboard" {
   alb_sg_id          = module.alb_waf.alb_sg_id
 
   service_name   = "dashboard"
-  image_uri      = "${module.ecr.repository_urls["dashboard"]}:latest"
+  image_uri = "${module.ecr.repository_urls["dashboard"]}:placeholder"
   container_port = 8081
   cpu            = 256
   memory         = 512
