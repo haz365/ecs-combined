@@ -96,7 +96,7 @@ type ClickEvent struct {
 
 func connectDB(cfg Config) (*sql.DB, error) {
 	dsn := fmt.Sprintf(
-		"host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+		"host=%s port=%s dbname=%s user=%s password=%s sslmode=require",
 		cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBUser, cfg.DBPassword,
 	)
 	db, err := sql.Open("postgres", dsn)

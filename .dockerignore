@@ -1,0 +1,44 @@
+# Terraform — never in images
+infra/
+.terraform/
+*.tfstate
+*.tfvars
+
+# Git
+.git/
+.gitignore
+
+# Docs
+docs/
+*.md
+README*
+
+# CI
+.github/
+
+# Local dev
+docker-compose*.yml
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Test artefacts
+load-test/
+sbom-*.json
+trivy-*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Go build cache
+vendor/

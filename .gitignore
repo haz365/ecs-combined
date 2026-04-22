@@ -1,0 +1,52 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+.terraform.lock.hcl
+crash.log
+
+# Secrets — never commit these
+*.pem
+*.key
+secrets.auto.tfvars
+*.secret.tfvars
+
+# Go
+vendor/
+*.test
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# CI artefacts
+sbom-*.json
+trivy-*.json
+
+# Local env overrides
+.env
+.env.local
+docker-compose.override.yml
+
+# Temp files
+/tmp/
+task-*.json

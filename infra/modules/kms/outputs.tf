@@ -1,0 +1,10 @@
+output "rds_key_arn"        { value = aws_kms_key.rds.arn }
+output "rds_key_id"         { value = aws_kms_key.rds.key_id }
+output "s3_key_arn"         { value = aws_kms_key.s3.arn }
+output "s3_key_id"          { value = aws_kms_key.s3.key_id }
+output "secrets_key_arn"    { value = aws_kms_key.secrets.arn }
+output "secrets_key_id"     { value = aws_kms_key.secrets.key_id }
+output "cloudwatch_key_arn" { value = aws_kms_key.cloudwatch.arn }
+output "cloudwatch_key_id"  { value = aws_kms_key.cloudwatch.key_id }
+output "sqs_key_arn"        { value = aws_kms_key.sqs.arn }
+output "sqs_key_id"         { value = aws_kms_key.sqs.key_id }
