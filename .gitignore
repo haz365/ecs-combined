@@ -49,4 +49,5 @@ docker-compose.override.yml
 
 # Temp files
 /tmp/
-task-*.json
+task-*.json**/.terraform/
+**/.terraform.lock.hcl
