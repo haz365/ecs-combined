@@ -1,0 +1,176 @@
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
+  prometheus_data:
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: ecscombined
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d ecscombined"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["6379:6379"]
+    command: redis-server --requirepass devredistoken
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "devredistoken", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:3.4
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["4566:4566"]
+    environment:
+      SERVICES: sqs
+      DEFAULT_REGION: eu-west-2
+      SQS_ENDPOINT_STRATEGY: path
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  sqs-init:
+    image: amazon/aws-cli:latest
+    networks: [internal]
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-west-2
+    entrypoint: ["/bin/sh", "-c", "aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name click-events-dlq && aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name click-events --attributes VisibilityTimeout=30 && echo queues ready"]
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["8080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sqs-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ecscombined
+      DB_USER: appuser
+      DB_PASSWORD: devpassword
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_TOKEN: devredistoken
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/click-events
+      AWS_REGION: eu-west-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      BASE_URL: http://localhost:8080
+      SHORT_SALT: dev-salt
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sqs-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ecscombined
+      DB_USER: appuser
+      DB_PASSWORD: devpassword
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/click-events
+      AWS_REGION: eu-west-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      METRICS_PORT: "9091"
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["8081:8081"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ecscombined
+      DB_USER: appuser
+      DB_PASSWORD: devpassword
+      PORT: "8081"
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["9090:9090"]
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["3000:3000"]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: devgrafana
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    depends_on: [prometheus]

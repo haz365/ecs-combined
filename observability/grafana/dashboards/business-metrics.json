@@ -1,0 +1,69 @@
+{
+  "title": "Business Metrics",
+  "uid": "business-metrics",
+  "timezone": "browser",
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "URLs Shortened / hour",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "increase(urls_shortened_total[1h])",
+          "legendFormat": "shortened/hr"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Redirects / hour",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "increase(url_redirects_total[1h])",
+          "legendFormat": "redirects/hr"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Worker Messages Processed (cumulative)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "worker_messages_processed_total",
+          "legendFormat": "processed"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Worker Messages Failed (cumulative)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "worker_messages_failed_total",
+          "legendFormat": "failed"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "SQS Worker In-flight",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "worker_sqs_inflight_messages",
+          "legendFormat": "in-flight"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38
+}

@@ -1,0 +1,29 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    project:     ecs-combined
+    environment: local
+
+# ── Scrape configs ────────────────────────────────────────────────────────────
+
+scrape_configs:
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: api
+    static_configs:
+      - targets: ["api:8080"]
+    metrics_path: /metrics
+
+  - job_name: worker
+    static_configs:
+      - targets: ["worker:9091"]
+    metrics_path: /metrics
+
+  - job_name: dashboard
+    static_configs:
+      - targets: ["dashboard:8081"]
+    metrics_path: /metrics
