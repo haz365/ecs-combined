@@ -1,0 +1,5 @@
+project         = "ecs-combined"
+environment     = "prod"
+aws_region      = "eu-west-2"
+domain          = "hasanali.uk"
+certificate_arn = "arn:aws:acm:eu-west-2:989346120260:certificate/7268bfb0-315f-46b2-a1ee-08e5407b3394"
