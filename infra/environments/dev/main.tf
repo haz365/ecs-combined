@@ -309,3 +309,19 @@ resource "aws_route53_record" "app" {
     evaluate_target_health = true
   }
 }
+
+module "monitoring" {
+  source      = "../../modules/monitoring"
+  project     = var.project
+  environment = var.environment
+
+  alert_email        = var.alert_email
+  monthly_budget_usd = "200"
+
+  alb_arn_suffix              = module.alb_waf.alb_arn_suffix
+  api_target_group_arn_suffix = module.alb_waf.api_target_group_arn_suffix
+  sqs_queue_name              = "${var.project}-${var.environment}-click-events"
+  rds_instance_id             = module.rds.db_instance_id
+  ecs_cluster_name            = aws_ecs_cluster.main.name
+  api_desired_count           = 2
+}
