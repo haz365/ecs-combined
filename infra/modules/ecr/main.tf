@@ -10,7 +10,7 @@ terraform {
 data "aws_caller_identity" "current" {}
 
 locals {
-  services = toset(["api", "worker", "dashboard"])
+  services = toset(["api", "worker", "dashboard", "prometheus", "grafana"])
 }
 
 resource "aws_ecr_repository" "service" {

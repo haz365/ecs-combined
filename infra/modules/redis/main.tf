@@ -19,7 +19,7 @@ resource "random_password" "auth_token" {
 resource "aws_secretsmanager_secret" "redis_token" {
   name                    = "${var.project}/${var.environment}/redis/auth-token"
   kms_key_id              = var.secrets_kms_key_arn
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags = { Name = "${var.project}-${var.environment}-redis-token" }
 }
 
