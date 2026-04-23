@@ -7,7 +7,13 @@ tfplan
 .terraform.lock.hcl
 crash.log
 
-# Secrets — never commit these
+# Terraform vars and sensitive files - never commit these
+*.tfvars
+*.tfvars.json
+terraform.tfvars
+terraform.tfvars.json
+
+# Secrets
 *.pem
 *.key
 secrets.auto.tfvars
@@ -16,6 +22,7 @@ secrets.auto.tfvars
 # Go
 vendor/
 *.test
+go.sum
 
 # Python
 __pycache__/
@@ -41,6 +48,7 @@ Thumbs.db
 # CI artefacts
 sbom-*.json
 trivy-*.json
+results.json
 
 # Local env overrides
 .env
@@ -49,5 +57,4 @@ docker-compose.override.yml
 
 # Temp files
 /tmp/
-task-*.json**/.terraform/
-**/.terraform.lock.hcl
+task-*.json
