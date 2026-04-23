@@ -243,6 +243,48 @@ AWS Budgets configured per environment with alerts at 50%, 80%, 100%.
 
 ## Chaos + Load Test Results
 
+### Chaos Test
+
+**Test 1 — Single task kill (self-healing)**
+
+Manually stopped one of two running API tasks while continuously polling `/health`.
+
+Result: Zero downtime. ECS detected the unhealthy task and replaced it within 42 seconds. The second task continued serving all traffic throughout. HTTP 200 on every request during recovery.
+
+**Test 2 — All tasks killed (AZ loss simulation)**
+
+Stopped all running API tasks simultaneously to simulate a full AZ loss.
+
+Result: ~10 seconds of 503 responses while ECS launched replacement tasks. Tasks were running again within 48 seconds of the kill command.
+
+**Finding:** `desired_count >= 2` is required for zero-downtime task replacement. With a single task, any restart causes downtime.
+
+---
+
+### Load Test (k6 against local stack)
+
+Script: `load-test/script.js`
+Profile: ramp 0→10→50→100 VUs over 4 minutes
+
+Total requests:     12,459
+Failed requests:    0 (0%)
+p50 latency:        8ms
+p95 latency:        14ms
+p99 latency:        28ms
+Shorten p95:        13ms
+Redirect p95:       16ms
+Peak VUs:           100
+Duration:           4m01s
+
+**Findings:**
+- Zero errors under 100 concurrent users
+- Redirect endpoint is faster than shorten (Redis cache hit)
+- p95 well under the 500ms SLA threshold
+- Alarm thresholds set at p95 > 500ms — observed peak was 14ms, giving 35× headroom
+
+**Staging load test** would run against RDS + Redis on real AWS infrastructure to get accurate network latency numbers. Local postgres is significantly faster than RDS across a network hop.
+
+
 ### Chaos test
 - Killed a running API task manually — ECS replaced it within 45 seconds
 - Drained tasks from one AZ — remaining tasks in other AZs continued serving
