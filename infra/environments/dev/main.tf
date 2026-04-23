@@ -275,3 +275,37 @@ module "ecs_dashboard" {
     { name = "DB_PASSWORD", valueFrom = "${module.rds.secret_arn}:password::" },
   ]
 }
+
+module "observability" {
+  source      = "../../modules/observability"
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  cluster_id         = aws_ecs_cluster.main.id
+  alb_sg_id          = module.alb_waf.alb_sg_id
+  https_listener_arn = module.alb_waf.https_listener_arn
+  execution_role_arn = module.iam.execution_role_arn
+
+  cloudwatch_kms_key_arn = module.kms.cloudwatch_key_arn
+
+  api_sg_id       = module.ecs_api.security_group_id
+  worker_sg_id    = module.ecs_worker.security_group_id
+  dashboard_sg_id = module.ecs_dashboard.security_group_id
+
+  ecr_base = "989346120260.dkr.ecr.eu-west-2.amazonaws.com/ecs-combined"
+}
+
+resource "aws_route53_record" "app" {
+  zone_id = "Z044516511F47YV4NV151"
+  name    = "hasanali.uk"
+  type    = "A"
+
+  alias {
+    name                   = module.alb_waf.alb_dns_name
+    zone_id                = module.alb_waf.alb_zone_id
+    evaluate_target_health = true
+  }
+}
