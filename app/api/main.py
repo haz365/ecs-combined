@@ -14,6 +14,8 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, HttpUrl
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -125,6 +127,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ecs-combined API", version="1.0.0", lifespan=lifespan)
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+def index():
+    return FileResponse("static/index.html")
 # ── Middleware: trace ID + metrics ────────────────────────────────────────────
 
 @app.middleware("http")

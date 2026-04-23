@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>shorten — hasanali.uk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #222222;
+    --border-bright: #333333;
+    --text: #f0f0f0;
+    --muted: #666666;
+    --accent: #e8ff47;
+    --accent-dim: #c8df27;
+    --danger: #ff4747;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 1.25rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    text-decoration: none;
+  }
+
+  .header-meta {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  main {
+    flex: 1;
+    max-width: 680px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 3rem 2rem;
+  }
+
+  .hero {
+    margin-bottom: 3rem;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: 2.2rem;
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 0.875rem;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  .input-group {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    transition: border-color 0.15s;
+  }
+
+  .input-group:focus-within {
+    border-color: var(--accent);
+  }
+
+  .input-group input {
+    flex: 1;
+    background: var(--surface);
+    border: none;
+    outline: none;
+    padding: 0.9rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text);
+    min-width: 0;
+  }
+
+  .input-group input::placeholder {
+    color: var(--muted);
+  }
+
+  .input-group button {
+    background: var(--accent);
+    color: #0a0a0a;
+    border: none;
+    padding: 0.9rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+    letter-spacing: 0.05em;
+  }
+
+  .input-group button:hover { background: var(--accent-dim); }
+  .input-group button:active { transform: scale(0.98); }
+  .input-group button:disabled { background: var(--border-bright); color: var(--muted); cursor: not-allowed; }
+
+  .result-box {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 1rem;
+    display: none;
+    margin-bottom: 1rem;
+  }
+
+  .result-box.visible { display: block; }
+
+  .result-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  .result-url {
+    font-family: var(--mono);
+    font-size: 1rem;
+    color: var(--accent);
+    word-break: break-all;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .result-url:hover { text-decoration: underline; }
+
+  .copy-btn {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-btn.copied { border-color: #4ade80; color: #4ade80; }
+
+  .error-box {
+    background: #1a0a0a;
+    border: 1px solid #3a1a1a;
+    border-left: 3px solid var(--danger);
+    border-radius: 4px;
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: #ff8888;
+    display: none;
+    margin-bottom: 1rem;
+  }
+
+  .error-box.visible { display: block; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 3rem;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: 1rem;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .refresh-btn:hover { border-color: var(--text); color: var(--text); }
+
+  .url-list {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .url-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  .url-item:last-child { border-bottom: none; }
+  .url-item:hover { background: var(--surface); }
+
+  .url-item-code {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .url-item-code:hover { text-decoration: underline; }
+
+  .url-item-original {
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 380px;
+  }
+
+  .url-item-clicks {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .url-item-clicks span {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .empty-state {
+    padding: 2rem;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .loading {
+    padding: 2rem;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-text {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    margin-right: 0.4rem;
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo">shorten/</a>
+  <span class="header-meta" id="health-status">checking...</span>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>make it <span>short</span></h1>
+    <p class="subtitle">paste a URL. get a link. track the clicks.</p>
+  </div>
+
+  <div class="input-group">
+    <input
+      type="url"
+      id="url-input"
+      placeholder="https://your-very-long-url-goes-here.com/..."
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button id="shorten-btn" onclick="shortenURL()">shorten →</button>
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+
+  <div class="result-box" id="result-box">
+    <div class="result-label">your short link</div>
+    <div class="result-url" id="result-url">
+      <span id="result-link"></span>
+      <button class="copy-btn" id="copy-btn" onclick="copyLink()">copy</button>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat">
+      <div class="stat-label">total urls</div>
+      <div class="stat-value" id="stat-urls">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">total clicks</div>
+      <div class="stat-value" id="stat-clicks">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">last hour</div>
+      <div class="stat-value" id="stat-hour">—</div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">top links</span>
+    <button class="refresh-btn" onclick="loadData()">refresh</button>
+  </div>
+
+  <div class="url-list" id="url-list">
+    <div class="loading">loading...</div>
+  </div>
+</main>
+
+<footer>
+  <span class="footer-text"><span class="status-dot"></span>ecs-combined / eu-west-2</span>
+  <span class="footer-text" id="footer-time"></span>
+</footer>
+
+<script>
+  const BASE = '';
+
+  async function shortenURL() {
+    const input = document.getElementById('url-input');
+    const btn = document.getElementById('shorten-btn');
+    const errorBox = document.getElementById('error-box');
+    const resultBox = document.getElementById('result-box');
+
+    const url = input.value.trim();
+    if (!url) return;
+
+    errorBox.classList.remove('visible');
+    resultBox.classList.remove('visible');
+    btn.disabled = true;
+    btn.textContent = 'working...';
+
+    try {
+      const res = await fetch(`${BASE}/shorten`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'something went wrong');
+      }
+
+      document.getElementById('result-link').textContent = data.short_url;
+      document.getElementById('result-link').onclick = () => window.open(data.short_url, '_blank');
+      resultBox.classList.add('visible');
+      input.value = '';
+      loadData();
+
+    } catch (err) {
+      errorBox.textContent = `error: ${err.message}`;
+      errorBox.classList.add('visible');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'shorten →';
+    }
+  }
+
+  function copyLink() {
+    const link = document.getElementById('result-link').textContent;
+    const btn = document.getElementById('copy-btn');
+    navigator.clipboard.writeText(link).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  async function loadData() {
+    try {
+      const [summaryRes, topRes] = await Promise.all([
+        fetch(`${BASE}/summary`),
+        fetch(`${BASE}/top-urls?limit=10`)
+      ]);
+
+      const summary = await summaryRes.json();
+      const top = await topRes.json();
+
+      document.getElementById('stat-urls').textContent = summary.total_urls ?? '0';
+      document.getElementById('stat-clicks').textContent = summary.total_clicks ?? '0';
+      document.getElementById('stat-hour').textContent = summary.clicks_last_hour ?? '0';
+
+      const list = document.getElementById('url-list');
+
+      if (!top.top_urls || top.top_urls.length === 0) {
+        list.innerHTML = '<div class="empty-state">no links yet — shorten your first URL above</div>';
+        return;
+      }
+
+      list.innerHTML = top.top_urls.map(u => `
+        <div class="url-item">
+          <div>
+            <div class="url-item-code" onclick="window.open('${BASE}/r/${u.short_code}', '_blank')">
+              hasanali.uk/r/${u.short_code}
+            </div>
+          </div>
+          <div class="url-item-clicks"><span>${u.click_count}</span> clicks</div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      console.error('load failed', err);
+    }
+  }
+
+  async function checkHealth() {
+    try {
+      const res = await fetch(`${BASE}/health`);
+      const data = await res.json();
+      const el = document.getElementById('health-status');
+      if (data.status === 'ok') {
+        el.textContent = 'all systems operational';
+        el.style.color = '#4ade80';
+      } else {
+        el.textContent = 'degraded';
+        el.style.color = '#ff4747';
+      }
+    } catch {
+      document.getElementById('health-status').textContent = 'unreachable';
+    }
+  }
+
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') shortenURL();
+  });
+
+  function updateTime() {
+    document.getElementById('footer-time').textContent =
+      new Date().toUTCString().replace(' GMT', ' UTC');
+  }
+
+  checkHealth();
+  loadData();
+  updateTime();
+  setInterval(loadData, 30000);
+  setInterval(updateTime, 1000);
+</script>
+</body>
+</html>

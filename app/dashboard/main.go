@@ -74,9 +74,13 @@ func init() {
 // ── DB ────────────────────────────────────────────────────────────────────────
 
 func connectDB(cfg Config) (*sql.DB, error) {
+	sslMode := "require"
+	if v := os.Getenv("DB_SSL_MODE"); v != "" {
+		sslMode = v
+	}
 	dsn := fmt.Sprintf(
-		"host=%s port=%s dbname=%s user=%s password=%s sslmode=require",
-		cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBUser, cfg.DBPassword,
+		"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
+		cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBUser, cfg.DBPassword, sslMode,
 	)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

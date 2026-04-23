@@ -17,7 +17,8 @@ RUN groupadd -r appuser && useradd -r -g appuser -s /sbin/nologin appuser
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
-COPY --chown=appuser:appuser app/api/main.py .
+COPY --chown=appuser:appuser app/api/main.py main.py
+COPY --chown=appuser:appuser app/api/static/ static/
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1

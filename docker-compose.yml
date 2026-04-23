@@ -121,6 +121,7 @@ services:
       DB_NAME: ecscombined
       DB_USER: appuser
       DB_PASSWORD: devpassword
+      DB_SSL_MODE: disable
       SQS_QUEUE_URL: http://localstack:4566/000000000000/click-events
       AWS_REGION: eu-west-2
       AWS_ACCESS_KEY_ID: test
