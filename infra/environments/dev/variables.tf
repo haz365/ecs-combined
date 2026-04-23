@@ -28,3 +28,9 @@ variable "base_url" {
   description = "Base URL for short links e.g. https://hasanali.uk"
   default     = ""
 }
+
+variable "alert_email" {
+  type        = string
+  description = "Email for CloudWatch alarms and budget alerts"
+  default     = ""
+}

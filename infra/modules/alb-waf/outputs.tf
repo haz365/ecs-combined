@@ -6,3 +6,5 @@ output "https_listener_arn"   { value = aws_lb_listener.https.arn }
 output "api_target_group_arn" { value = aws_lb_target_group.api.arn }
 output "dashboard_target_group_arn" { value = aws_lb_target_group.dashboard.arn }
 output "alb_logs_bucket"      { value = aws_s3_bucket.alb_logs.bucket }
+output "alb_arn_suffix"              { value = aws_lb.main.arn_suffix }
+output "api_target_group_arn_suffix" { value = aws_lb_target_group.api.arn_suffix }
