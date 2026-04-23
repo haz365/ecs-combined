@@ -20,7 +20,7 @@ resource "random_password" "db" {
 resource "aws_secretsmanager_secret" "db_password" {
   name                    = "${var.project}/${var.environment}/rds/password"
   kms_key_id              = var.secrets_kms_key_arn
-  recovery_window_in_days = var.environment == "prod" ? 30 : 7
+  recovery_window_in_days = var.environment == "prod" ? 30 : 0
   tags = { Name = "${var.project}-${var.environment}-rds-password" }
 }
 

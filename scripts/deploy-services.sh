@@ -39,7 +39,7 @@ import json
 with open('/tmp/task-${svc}.json') as f:
     td = json.load(f)
 td['containerDefinitions'][0]['image'] = '${NEW_IMAGE}'
-for key in ['taskDefinitionArn','revision','status','requiresAttributes','compatibilities','registeredAt','registeredBy']:
+for key in ['taskDefinitionArn','revision','status','requiresAttributes','compatibilities','registeredAt','registeredBy','deregisteredAt']:
     td.pop(key, None)
 with open('/tmp/task-${svc}-new.json', 'w') as f:
     json.dump(td, f)

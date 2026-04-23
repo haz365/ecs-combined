@@ -11,7 +11,7 @@ echo "==> Logging in to ECR"
 aws ecr get-login-password --region $REGION | \
   docker login --username AWS --password-stdin $REGISTRY
 
-echo "==> Building and pushing with tag: $SHA"
+echo "==> Building and pushing app images with tag: $SHA"
 
 for svc in api worker dashboard; do
   echo ""
@@ -28,6 +28,20 @@ for svc in api worker dashboard; do
 done
 
 echo ""
-echo "==> All images pushed with tag: $SHA"
+echo "==> Pushing observability images (pinned versions)..."
+
+# Prometheus
+docker pull --platform linux/amd64 prom/prometheus:v2.51.2
+docker tag prom/prometheus:v2.51.2 ${REGISTRY}/${PROJECT}/prometheus:v2.51.2
+docker push ${REGISTRY}/${PROJECT}/prometheus:v2.51.2
+
+# Grafana
+docker pull --platform linux/amd64 grafana/grafana:10.4.2
+docker tag grafana/grafana:10.4.2 ${REGISTRY}/${PROJECT}/grafana:10.4.2
+docker push ${REGISTRY}/${PROJECT}/grafana:10.4.2
+
+echo ""
+echo "==> All images pushed"
+echo "==> App image tag: $SHA"
 echo "==> To deploy run:"
 echo "    SHA=$SHA ./scripts/deploy-services.sh dev"
