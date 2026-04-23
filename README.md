@@ -21,21 +21,42 @@ via a read API. Three services run on ECS Fargate behind an ALB with WAF:
 ---
 
 ## Architecture
-Route 53 (hasanali.uk)
-│
-WAFv2 + ALB (HTTPS, TLS 1.2+)
-│
-┌────┴────────────┐
-│                 │
-api            dashboard
-│
-├── SQS ──► worker
-│
-├── ElastiCache Redis (URL cache)
-└── RDS PostgreSQL (primary store)
-All compute in private subnets.
-No NAT gateways — 12 VPC endpoints for AWS service traffic.
-Prometheus + Grafana on Fargate with EFS persistent storage.
+
+```mermaid
+flowchart TD
+    A[Internet / Users] --> B[Route 53\nhasanali.uk]
+    B --> C[WAFv2 + ALB\nHTTPS · managed rules · rate limit]
+
+    subgraph VPC ["VPC 10.0.0.0/16 · 3 AZs · private subnets · no NAT"]
+        subgraph ECS ["ECS Fargate Cluster"]
+            C --> D[api\nPython · port 8080]
+            C --> E[worker\nGo · SQS consumer]
+            C --> F[dashboard\nGo · port 8081]
+            G[prometheus\nEFS storage]
+            H[grafana\nEFS storage]
+            D --> G
+            E --> G
+            F --> G
+            G --> H
+        end
+
+        D --> I[SQS\nclick events · DLQ]
+        I --> E
+
+        D --> J[RDS PostgreSQL\nMulti-AZ · KMS · TLS]
+        E --> J
+        F --> J
+        D --> K[ElastiCache Redis\nTLS · auth token]
+
+        L[VPC Endpoints\nECR · SSM · SQS · KMS +8]
+    end
+
+    subgraph Security ["Security Controls"]
+        M[KMS CMKs · Secrets Manager · CloudTrail · GuardDuty]
+        N[IAM least-privilege · OIDC CI/CD · immutable ECR tags]
+        O[GitHub Actions → dev auto → staging → prod manual]
+    end
+```
 
 ---
 
