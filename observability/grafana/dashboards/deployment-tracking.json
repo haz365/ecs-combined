@@ -1,0 +1,105 @@
+{
+  "title": "Deployment Tracking",
+  "uid": "deployment-tracking",
+  "timezone": "browser",
+  "refresh": "30s",
+  "annotations": {
+    "list": [
+      {
+        "name": "Deployments",
+        "enable": true,
+        "iconColor": "blue",
+        "datasource": "Prometheus",
+        "expr": "changes(process_start_time_seconds{job=\"api\"}[5m]) > 0",
+        "step": "60s",
+        "titleFormat": "API deployed",
+        "textFormat": "New version deployed"
+      },
+      {
+        "name": "Worker Restarts",
+        "enable": true,
+        "iconColor": "orange",
+        "datasource": "Prometheus",
+        "expr": "changes(process_start_time_seconds{job=\"worker\"}[5m]) > 0",
+        "step": "60s",
+        "titleFormat": "Worker restarted",
+        "textFormat": "Worker process restarted"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Process Start Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "process_start_time_seconds{job=\"api\"}",
+          "legendFormat": "api started at"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Worker Process Start Time",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "process_start_time_seconds{job=\"worker\"}",
+          "legendFormat": "worker started at"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "API Request Rate — before and after deploy",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(api_requests_total[1m])) by (endpoint)",
+          "legendFormat": "{{ endpoint }}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Error Rate — before and after deploy",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(api_requests_total{status_code=~'5..'}[1m])) / sum(rate(api_requests_total[1m])) * 100",
+          "legendFormat": "error %"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Worker Messages Processed — before and after deploy",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(worker_messages_processed_total[1m])",
+          "legendFormat": "processed/s"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Latency p95 — before and after deploy",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 latency"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38
+}

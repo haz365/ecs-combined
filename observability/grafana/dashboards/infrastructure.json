@@ -1,0 +1,105 @@
+{
+  "title": "Infrastructure",
+  "uid": "infrastructure",
+  "timezone": "browser",
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "ECS API CPU Utilisation",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(process_cpu_seconds_total{job=\"api\"}[5m]) * 100",
+          "legendFormat": "api cpu %"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "ECS Worker CPU Utilisation",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(process_cpu_seconds_total{job=\"worker\"}[5m]) * 100",
+          "legendFormat": "worker cpu %"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "API Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes{job=\"api\"} / 1024 / 1024",
+          "legendFormat": "api memory MB"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Worker Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes{job=\"worker\"} / 1024 / 1024",
+          "legendFormat": "worker memory MB"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Redis Hit Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(url_redirects_total[5m])",
+          "legendFormat": "redirects/s (cache hits included)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "SQS Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "worker_sqs_inflight_messages",
+          "legendFormat": "in-flight messages"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Active Goroutines (Worker)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=\"worker\"}",
+          "legendFormat": "goroutines"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Active Goroutines (Dashboard)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=\"dashboard\"}",
+          "legendFormat": "goroutines"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38
+}
