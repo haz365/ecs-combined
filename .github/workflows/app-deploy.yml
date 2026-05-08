@@ -116,7 +116,7 @@ jobs:
             --query "LoadBalancers[0].DNSName" \
             --output text)
 
-          echo "Testing http://$ALB/health"
+          echo "Testing https://$ALB/health"
 
           for i in 1 2 3 4 5; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB/health)
