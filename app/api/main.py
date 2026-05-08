@@ -291,4 +291,4 @@ def _publish_click(short_code: str, trace_id: str):
             }),
         )
     except Exception as e:
-        logger.warning(f"SQS publish failed: {e}", extra={"trace_id": trace_id})
+        logger.warning(f"SQS publish failed: {e}", extra={"trace_id": trace_id})# Fri May  8 02:49:02 BST 2026
