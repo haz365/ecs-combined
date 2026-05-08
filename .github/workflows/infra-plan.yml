@@ -12,17 +12,14 @@ permissions:
 
 jobs:
   plan:
-    name: Plan ${{ matrix.environment }}
+    name: Plan dev
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        environment: [dev]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials via OIDC
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
@@ -34,36 +31,40 @@ jobs:
           terraform_version: 1.7.5
 
       - name: Terraform Init
-        working-directory: infra/environments/${{ matrix.environment }}
+        working-directory: infra/environments/dev
         run: terraform init
 
       - name: Terraform Format Check
-        working-directory: infra/environments/${{ matrix.environment }}
-        run: terraform fmt -check -recursive
+        working-directory: infra/environments/dev
+        run: terraform fmt -check -recursive ../../
 
       - name: Terraform Validate
-        working-directory: infra/environments/${{ matrix.environment }}
+        working-directory: infra/environments/dev
         run: terraform validate
 
       - name: Terraform Plan
         id: plan
-        working-directory: infra/environments/${{ matrix.environment }}
+        working-directory: infra/environments/dev
         run: |
           terraform plan \
-            -var-file=terraform.tfvars \
-            -no-color \
-            -out=tfplan 2>&1 | tee plan-output.txt
+            -var="project=ecs-combined" \
+            -var="environment=dev" \
+            -var="aws_region=eu-west-2" \
+            -var="domain=hasanali.uk" \
+            -var="certificate_arn=arn:aws:acm:eu-west-2:989346120260:certificate/7268bfb0-315f-46b2-a1ee-08e5407b3394" \
+            -no-color 2>&1 | tee plan-output.txt
 
       - name: Post plan to PR
         uses: actions/github-script@v7
+        if: always()
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('infra/environments/${{ matrix.environment }}/plan-output.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.slice(-60000) : plan;
+            const plan = fs.readFileSync('infra/environments/dev/plan-output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? '...(truncated)\n' + plan.slice(-60000) : plan;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `### Terraform Plan - ${{ matrix.environment }}\n\`\`\`\n${truncated}\n\`\`\``
+              body: `### Terraform Plan - dev\n\`\`\`\n${truncated}\n\`\`\``
             });
