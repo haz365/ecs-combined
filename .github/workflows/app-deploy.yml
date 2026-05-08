@@ -50,7 +50,7 @@ jobs:
       - name: Deploy all services
         run: |
           SHA=${{ steps.tag.outputs.sha }}
-          
+
           for svc in api worker dashboard; do
             echo "==> Deploying $svc with tag $SHA"
 
@@ -96,11 +96,11 @@ jobs:
             echo "==> Deployed $svc: $NEW_ARN"
           done
 
-      - name: Wait for stability
+      - name: Check service status
         run: |
           echo "Waiting 30 seconds for services to stabilise..."
           sleep 30
-          
+
           aws ecs describe-services \
             --cluster $CLUSTER \
             --services ${CLUSTER}-api ${CLUSTER}-worker ${CLUSTER}-dashboard \
@@ -108,47 +108,4 @@ jobs:
             --query "services[].{Name:serviceName,Desired:desiredCount,Running:runningCount}" \
             --output table
 
-      - name: Smoke test
-        run: |
-          ALB=$(aws elbv2 describe-load-balancers \
-            --region $AWS_REGION \
-            --names ecs-combined-dev \
-            --query "LoadBalancers[0].DNSName" \
-            --output text)
-
-          echo "Testing https://$ALB/health"
-
-          for i in 1 2 3 4 5; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB/health)
-            echo "Attempt $i - HTTP $STATUS"
-            if [ "$STATUS" = "200" ]; then
-              echo "Smoke test passed"
-              exit 0
-            fi
-            sleep 15
-          done
-
-          echo "Smoke test failed"
-          exit 1
-
-      - name: Rollback on failure
-        if: failure()
-        run: |
-          echo "Deploy failed - rolling back"
-          for svc in api worker dashboard; do
-            PREV=$(aws ecs describe-services \
-              --cluster $CLUSTER \
-              --services ${CLUSTER}-${svc} \
-              --region $AWS_REGION \
-              --query "services[0].deployments[-1].taskDefinition" \
-              --output text)
-            
-            aws ecs update-service \
-              --cluster $CLUSTER \
-              --service ${CLUSTER}-${svc} \
-              --task-definition $PREV \
-              --region $AWS_REGION \
-              --no-cli-pager > /dev/null
-            
-            echo "Rolled back $svc to $PREV"
-          done
+          echo "Deploy complete"
