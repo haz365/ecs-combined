@@ -24,41 +24,7 @@ via a read API. Three services run on ECS Fargate behind an ALB with WAF:
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A[Internet / Users] --> B[Route 53\nhasanali.uk]
-    B --> C[WAFv2 + ALB\nHTTPS · managed rules · rate limit]
-
-    subgraph VPC ["VPC 10.0.0.0/16 · 3 AZs · private subnets · no NAT"]
-        subgraph ECS ["ECS Fargate Cluster"]
-            C --> D[api\nPython · FastAPI · port 8080]
-            C --> E[worker\nGo · SQS consumer · port 9091]
-            C --> F[dashboard\nGo · analytics API · port 8081]
-            G[prometheus\nEFS storage]
-            H[grafana\ndashboards · EFS]
-            D --> G
-            E --> G
-            F --> G
-            G --> H
-        end
-
-        D --> I[SQS\nclick events · DLQ · KMS]
-        I --> E
-
-        D --> J[RDS PostgreSQL\nMulti-AZ · KMS · TLS]
-        E --> J
-        F --> J
-        D --> K[ElastiCache Redis\nTLS · auth token · 1hr TTL]
-
-        L[VPC Endpoints x12\nECR · SSM · SQS · KMS · logs +7]
-    end
-
-    subgraph Security ["Security Controls"]
-        M[KMS CMKs · Secrets Manager · CloudTrail · GuardDuty]
-        N[IAM least-privilege · OIDC CI/CD · immutable ECR tags · Trivy]
-        O[GitHub Actions → dev auto → staging → prod manual approval]
-    end
-```
+![Architecture Diagram](docs/images/ecscombined.drawio.png)
 
 ---
 
