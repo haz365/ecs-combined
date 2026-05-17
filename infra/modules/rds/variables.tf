@@ -53,3 +53,12 @@ variable "deletion_protection" {
   type    = bool
   default = false
 }
+
+variable "rotation_lambda_arn" {
+  type        = string
+  description = "ARN of the Secrets Manager rotation Lambda for RDS"
+}
+
+variable "private_subnet_ids" {
+  type = list(string)
+}

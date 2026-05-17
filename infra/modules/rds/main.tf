@@ -20,8 +20,17 @@ resource "random_password" "db" {
 resource "aws_secretsmanager_secret" "db_password" {
   name                    = "${var.project}/${var.environment}/rds/password"
   kms_key_id              = var.secrets_kms_key_arn
-  recovery_window_in_days = var.environment == "prod" ? 30 : 0
+  recovery_window_in_days = var.environment == "prod" ? 30 : 7
   tags = { Name = "${var.project}-${var.environment}-rds-password" }
+}
+
+resource "aws_secretsmanager_secret_rotation" "db_password" {
+  secret_id           = aws_secretsmanager_secret.db_password.id
+  rotation_lambda_arn = aws_serverlessapplicationrepository_cloudformation_stack.rotation_lambda.outputs["RotationLambdaARN"]
+
+  rotation_rules {
+    automatically_after_days = 30
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "db_password" {
@@ -148,4 +157,22 @@ resource "aws_db_instance" "main" {
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 
   tags = { Name = "${var.project}-${var.environment}" }
+}
+
+
+# ── Secrets Manager rotation Lambda ──────────────────────────────────────────
+
+data "aws_partition" "current" {}
+
+resource "aws_serverlessapplicationrepository_cloudformation_stack" "rotation_lambda" {
+  name           = "${var.project}-${var.environment}-rds-rotation"
+  application_id = "arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser"
+  capabilities   = ["CAPABILITY_NAMED_IAM"]
+
+  parameters = {
+    endpoint            = "https://secretsmanager.${data.aws_region.current.name}.amazonaws.com"
+    functionName        = "${var.project}-${var.environment}-rds-rotation"
+    vpcSubnetIds        = join(",", var.private_subnet_ids)
+    vpcSecurityGroupIds = aws_security_group.rds.id
+  }
 }
