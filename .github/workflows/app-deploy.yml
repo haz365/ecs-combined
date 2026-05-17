@@ -96,16 +96,38 @@ jobs:
             echo "==> Deployed $svc: $NEW_ARN"
           done
 
-      - name: Check service status
+      - - name: Wait for services to stabilise
         run: |
-          echo "Waiting 30 seconds for services to stabilise..."
-          sleep 30
+          for svc in api worker dashboard; do
+            echo "==> Waiting for ${CLUSTER}-${svc} to stabilise..."
+            aws ecs wait services-stable \
+              --cluster $CLUSTER \
+              --services ${CLUSTER}-${svc} \
+              --region $AWS_REGION
+            echo "==> ${svc} stable"
+          done
 
+      - name: Health check
+        run: |
+          echo "==> Running health check..."
+          for i in {1..10}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hasanali.uk/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "==> Health check passed"
+              exit 0
+            fi
+            echo "==> Attempt $i failed (status $STATUS), retrying..."
+            sleep 10
+          done
+          echo "==> Health check failed after 10 attempts — circuit breaker will rollback"
+          exit 1
+
+      - name: Show final status
+        if: always()
+        run: |
           aws ecs describe-services \
             --cluster $CLUSTER \
             --services ${CLUSTER}-api ${CLUSTER}-worker ${CLUSTER}-dashboard \
             --region $AWS_REGION \
-            --query "services[].{Name:serviceName,Desired:desiredCount,Running:runningCount}" \
+            --query "services[].{Name:serviceName,Desired:desiredCount,Running:runningCount,Status:status}" \
             --output table
-
-          echo "Deploy complete"

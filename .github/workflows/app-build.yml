@@ -58,7 +58,7 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ matrix.service }}:${{ steps.tag.outputs.sha }}
           format: table
-          exit-code: 0
+          exit-code: 1
           severity: HIGH,CRITICAL
           ignore-unfixed: true
 

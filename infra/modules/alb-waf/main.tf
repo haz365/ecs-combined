@@ -128,7 +128,7 @@ resource "aws_lb" "main" {
   access_logs {
     bucket  = aws_s3_bucket.alb_logs.bucket
     prefix  = "alb"
-    enabled = false
+    enabled = true
   }
 
   tags = { Name = "${var.project}-${var.environment}" }

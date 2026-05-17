@@ -31,7 +31,7 @@ done
 # Run terraform destroy
 echo "==> Running terraform destroy for $ENV"
 cd infra/environments/$ENV
-terraform destroy -var-file=terraform.tfvars -auto-approve
+terraform destroy -auto-approve
 
 echo "==> Teardown complete for $ENV"
 echo "==> Verify no billable resources remain:"

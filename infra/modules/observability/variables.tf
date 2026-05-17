@@ -19,3 +19,12 @@ variable "ecr_base" {
   type        = string
   description = "ECR registry base URL e.g. 123456789.dkr.ecr.eu-west-2.amazonaws.com/ecs-combined"
 }
+
+variable "grafana_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "kms_key_arn" {
+  type = string
+}

@@ -70,3 +70,9 @@ variable "enable_load_balancer" {
   type    = bool
   default = true
 }
+
+variable "enable_execute_command" {
+  type        = bool
+  default     = false
+  description = "Enable ECS Exec. Only enable temporarily for break-glass access. Never enable in prod."
+}

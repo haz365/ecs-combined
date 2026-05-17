@@ -5,7 +5,7 @@ variable "project" {
 
 variable "environment" {
   type    = string
-  default = "dev"
+  default = "prod"
 }
 
 variable "aws_region" {
@@ -14,23 +14,14 @@ variable "aws_region" {
 }
 
 variable "domain" {
-  type        = string
-  description = "Your Route53 domain e.g. example.com"
+  type = string
 }
 
 variable "certificate_arn" {
-  type        = string
-  description = "ACM certificate ARN for your domain"
+  type = string
 }
 
-variable "base_url" {
-  type        = string
-  description = "Base URL for short links e.g. https://hasanali.uk"
-  default     = ""
-}
-
-variable "alert_email" {
-  type        = string
-  description = "Email for CloudWatch alarms and budget alerts"
-  default     = ""
+variable "grafana_password" {
+  type      = string
+  sensitive = true
 }

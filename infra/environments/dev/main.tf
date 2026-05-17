@@ -281,7 +281,9 @@ module "observability" {
   project     = var.project
   environment = var.environment
   aws_region  = var.aws_region
-
+  
+  grafana_password   = var.grafana_password
+  kms_key_arn        = module.kms.key_arn
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   cluster_id         = aws_ecs_cluster.main.id
