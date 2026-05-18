@@ -40,9 +40,72 @@ jobs:
         working-directory: infra/environments/dev
         run: |
           terraform apply \
-            -var="project=ecs-combined" \
-            -var="environment=dev" \
-            -var="aws_region=eu-west-2" \
-            -var="domain=hasanali.uk" \
-            -var="certificate_arn=arn:aws:acm:eu-west-2:989346120260:certificate/7268bfb0-315f-46b2-a1ee-08e5407b3394" \
+            -var-file=terraform.tfvars \
+            -var="grafana_password=${{ secrets.GRAFANA_PASSWORD }}" \
+            -auto-approve
+
+  apply-staging:
+    name: Apply staging
+    runs-on: ubuntu-latest
+    needs: apply-dev
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
+          aws-region: eu-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        working-directory: infra/environments/staging
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: infra/environments/staging
+        run: |
+          terraform apply \
+            -var-file=terraform.tfvars \
+            -var="grafana_password=${{ secrets.GRAFANA_PASSWORD }}" \
+            -auto-approve
+
+  apply-prod:
+    name: Apply prod
+    runs-on: ubuntu-latest
+    needs: apply-staging
+    environment: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989346120260:role/ecs-combined-github-actions
+          aws-region: eu-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        working-directory: infra/environments/prod
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: infra/environments/prod
+        run: |
+          terraform apply \
+            -var-file=terraform.tfvars \
+            -var="grafana_password=${{ secrets.GRAFANA_PASSWORD }}" \
             -auto-approve

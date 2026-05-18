@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM python:3.12.3-slim-bookworm AS builder
+FROM python:3.12.3-slim-bookworm@sha256:afc139a0a640942491ec481ad8dda10f2c5b753f5c969393b12480155fe15a63 AS builder
 
 WORKDIR /build
 
@@ -10,7 +10,7 @@ COPY app/api/requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM python:3.12.3-slim-bookworm
+FROM python:3.12.3-slim-bookworm@sha256:afc139a0a640942491ec481ad8dda10f2c5b753f5c969393b12480155fe15a63
 
 RUN groupadd -r appuser && useradd -r -g appuser -s /sbin/nologin appuser
 

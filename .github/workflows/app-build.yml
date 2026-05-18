@@ -62,6 +62,19 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ matrix.service }}:${{ steps.tag.outputs.sha }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service }}.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.json
+
       - name: Push image
         run: |
           docker push $REGISTRY/$PROJECT/${{ matrix.service }}:${{ steps.tag.outputs.sha }}
