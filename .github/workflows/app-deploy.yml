@@ -96,7 +96,7 @@ jobs:
             echo "==> Deployed $svc: $NEW_ARN"
           done
 
-      - - name: Wait for services to stabilise
+      - name: Wait for services to stabilise
         run: |
           for svc in api worker dashboard; do
             echo "==> Waiting for ${CLUSTER}-${svc} to stabilise..."
