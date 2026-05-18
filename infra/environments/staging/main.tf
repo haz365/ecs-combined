@@ -23,16 +23,17 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 module "kms" {
-  source      = "../../modules/kms"
-  project     = var.project
-  environment = var.environment
+  source              = "../../modules/kms"
+  project             = var.project
+  environment         = var.environment
+  key_deletion_window = var.key_deletion_window
 }
 
 module "vpc" {
   source                 = "../../modules/vpc"
   project                = var.project
   environment            = var.environment
-  vpc_cidr               = "10.1.0.0/16"
+  vpc_cidr               = var.vpc_cidr
   cloudwatch_kms_key_arn = module.kms.cloudwatch_key_arn
 }
 
@@ -67,13 +68,14 @@ module "rds" {
     module.ecs_dashboard.security_group_id,
   ]
 
-  rds_kms_key_arn       = module.kms.rds_key_arn
-  secrets_kms_key_arn   = module.kms.secrets_key_arn
-  instance_class        = "db.t3.small"
-  allocated_storage     = 20
-  multi_az              = true
-  backup_retention_days = 7
-  deletion_protection   = false
+  rds_kms_key_arn     = module.kms.rds_key_arn
+  secrets_kms_key_arn = module.kms.secrets_key_arn
+
+  instance_class        = var.instance_class
+  allocated_storage     = var.allocated_storage
+  multi_az              = var.multi_az
+  backup_retention_days = var.backup_retention_days
+  deletion_protection   = var.deletion_protection
 }
 
 module "redis" {
@@ -89,8 +91,8 @@ module "redis" {
 
   kms_key_arn         = module.kms.rds_key_arn
   secrets_kms_key_arn = module.kms.secrets_key_arn
-  node_type           = "cache.t3.small"
-  num_cache_nodes     = 2
+  node_type           = var.redis_node_type
+  num_cache_nodes     = var.redis_num_nodes
 }
 
 module "iam" {
@@ -100,8 +102,13 @@ module "iam" {
   aws_region  = var.aws_region
   account_id  = data.aws_caller_identity.current.account_id
 
-  ecr_repository_arns    = values(module.ecr.repository_arns)
-  secrets_arns           = [module.rds.secret_arn, module.redis.auth_token_secret_arn]
+  ecr_repository_arns = values(module.ecr.repository_arns)
+
+  secrets_arns = [
+    module.rds.secret_arn,
+    module.redis.auth_token_secret_arn,
+  ]
+
   sqs_queue_arn          = module.sqs.queue_arn
   s3_logs_bucket         = module.alb_waf.alb_logs_bucket
   cloudwatch_kms_key_arn = module.kms.cloudwatch_key_arn
@@ -124,15 +131,19 @@ module "alb_waf" {
 
 resource "aws_ecs_cluster" "main" {
   name = "${var.project}-${var.environment}"
+
   setting {
     name  = "containerInsights"
     value = "enabled"
   }
+
+  tags = { Name = "${var.project}-${var.environment}" }
 }
 
 resource "aws_ecs_cluster_capacity_providers" "main" {
   cluster_name       = aws_ecs_cluster.main.name
   capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+
   default_capacity_provider_strategy {
     capacity_provider = "FARGATE"
     weight            = 1
@@ -151,11 +162,11 @@ module "ecs_api" {
   alb_sg_id          = module.alb_waf.alb_sg_id
 
   service_name   = "api"
-  image_uri      = "${module.ecr.repository_urls["api"]}:latest"
+  image_uri      = "${module.ecr.repository_urls["api"]}:placeholder"
   container_port = 8080
-  cpu            = 512
-  memory         = 1024
-  desired_count  = 2
+  cpu            = 256
+  memory         = 512
+  desired_count  = var.api_desired_count
 
   execution_role_arn = module.iam.execution_role_arn
   task_role_arn      = module.iam.api_task_role_arn
@@ -172,7 +183,7 @@ module "ecs_api" {
     { name = "REDIS_TLS",     value = "true" },
     { name = "AWS_REGION",    value = var.aws_region },
     { name = "SQS_QUEUE_URL", value = module.sqs.queue_url },
-    { name = "BASE_URL",      value = "https://app.staging.${var.domain}" },
+    { name = "BASE_URL",      value = var.base_url },
   ]
 
   secrets = [
@@ -193,7 +204,7 @@ module "ecs_worker" {
   alb_sg_id          = module.alb_waf.alb_sg_id
 
   service_name         = "worker"
-  image_uri            = "${module.ecr.repository_urls["worker"]}:latest"
+  image_uri            = "${module.ecr.repository_urls["worker"]}:placeholder"
   container_port       = 9091
   cpu                  = 256
   memory               = 512
@@ -232,11 +243,11 @@ module "ecs_dashboard" {
   alb_sg_id          = module.alb_waf.alb_sg_id
 
   service_name   = "dashboard"
-  image_uri      = "${module.ecr.repository_urls["dashboard"]}:latest"
+  image_uri      = "${module.ecr.repository_urls["dashboard"]}:placeholder"
   container_port = 8081
   cpu            = 256
   memory         = 512
-  desired_count  = 2
+  desired_count  = var.dashboard_desired_count
 
   execution_role_arn = module.iam.execution_role_arn
   task_role_arn      = module.iam.dashboard_task_role_arn
@@ -254,4 +265,53 @@ module "ecs_dashboard" {
   secrets = [
     { name = "DB_PASSWORD", valueFrom = "${module.rds.secret_arn}:password::" },
   ]
+}
+
+module "observability" {
+  source      = "../../modules/observability"
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  grafana_password       = var.grafana_password
+  kms_key_arn            = module.kms.secrets_key_arn
+  vpc_id                 = module.vpc.vpc_id
+  private_subnet_ids     = module.vpc.private_subnet_ids
+  cluster_id             = aws_ecs_cluster.main.id
+  alb_sg_id              = module.alb_waf.alb_sg_id
+  https_listener_arn     = module.alb_waf.https_listener_arn
+  execution_role_arn     = module.iam.execution_role_arn
+  cloudwatch_kms_key_arn = module.kms.cloudwatch_key_arn
+  api_sg_id              = module.ecs_api.security_group_id
+  worker_sg_id           = module.ecs_worker.security_group_id
+  dashboard_sg_id        = module.ecs_dashboard.security_group_id
+  ecr_base               = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/ecs-combined"
+}
+
+resource "aws_route53_record" "app" {
+  zone_id = var.hosted_zone_id
+  name    = var.domain
+  type    = "A"
+
+  alias {
+    name                   = module.alb_waf.alb_dns_name
+    zone_id                = module.alb_waf.alb_zone_id
+    evaluate_target_health = true
+  }
+}
+
+module "monitoring" {
+  source      = "../../modules/monitoring"
+  project     = var.project
+  environment = var.environment
+
+  alert_email        = var.alert_email
+  monthly_budget_usd = var.monthly_budget_usd
+
+  alb_arn_suffix              = module.alb_waf.alb_arn_suffix
+  api_target_group_arn_suffix = module.alb_waf.api_target_group_arn_suffix
+  sqs_queue_name              = "${var.project}-${var.environment}-click-events"
+  rds_instance_id             = module.rds.db_instance_id
+  ecs_cluster_name            = aws_ecs_cluster.main.name
+  api_desired_count           = var.api_desired_count
 }
