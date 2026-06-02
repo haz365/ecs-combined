@@ -57,4 +57,4 @@ docker-compose.override.yml
 
 # Temp files
 /tmp/
-task-*.json
+task-*.json.env
