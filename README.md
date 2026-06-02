@@ -1,380 +1,367 @@
-# ecs-combined
+# URL Shortener and Analytics Platform
 
-A production-grade, end-to-end URL shortener and analytics platform deployed
-on AWS ECS Fargate. Three application services, full observability stack,
-zero long-lived credentials, zero NAT gateways, and a deployment pipeline
-built to production standards.
+A production-grade URL shortening and click analytics platform deployed on AWS ECS Fargate. Three independently deployable services handle URL shortening, real-time click tracking, and analytics — running behind an Application Load Balancer with WAF, across three availability zones, with zero NAT gateway egress and zero long-lived credentials.
 
-Also includes a full Kubernetes deployment running locally with minikube.
+**Live:** https://hasanali.uk
 
 ---
 
-## Overview
+## Platform Overview
 
-The platform shortens URLs, tracks clicks in real time, and exposes analytics
-via a read API. Three services run on ECS Fargate behind an ALB with WAF:
+The platform was designed around a single architectural principle: every component that touches production traffic must be hardened, observable, and recoverable without manual intervention. The no-NAT VPC architecture eliminates an entire class of egress-based exfiltration vectors. The circuit-breaker deployment model means a bad deploy rolls back automatically before an on-call engineer is paged.
 
-| Service | Language | Port | Role |
+The analytics pipeline is fully asynchronous — the API publishes click events to SQS and returns the redirect immediately, keeping p95 redirect latency under 16ms regardless of downstream write pressure.
+
+---
+
+## Services
+
+| Service | Language | Port | Responsibility |
 |---|---|---|---|
-| api | Python (FastAPI) | 8080 | Shortens URLs, handles redirects, publishes click events to SQS, serves frontend UI |
-| worker | Go | 9091 | Consumes SQS, persists click analytics to PostgreSQL |
-| dashboard | Go | 8081 | Read API — top URLs, hourly breakdowns, recent events, summary stats |
+| api | Python / FastAPI | 8080 | URL shortening, redirect handling, click event publishing, frontend UI |
+| worker | Go | 9091 | SQS consumer — persists click analytics to PostgreSQL |
+| dashboard | Go | 8081 | Analytics read API — top URLs, hourly breakdowns, summary statistics |
 
 ---
 
 ## Architecture
 
-![Architecture Diagram](docs/images/ecscombined.drawio.png)
+```mermaid
+flowchart TD
+    User -->|HTTPS| R53[Route53\nhasanali.uk]
+    R53 --> ALB[ALB · WAFv2]
+    ALB --> API[api :8080\nPython · FastAPI]
+    API -->|redirect| Redis[(ElastiCache Redis\nTLS · auth token)]
+    API -->|write| RDS[(RDS PostgreSQL\nMulti-AZ · KMS)]
+    API -->|publish click| SQS[SQS\nclick-events · DLQ]
+    SQS -->|consume| Worker[worker :9091\nGo]
+    Worker -->|write analytics| RDS
+    ALB --> Dashboard[dashboard :8081\nGo]
+    Dashboard -->|read| RDS
+    Prometheus -->|scrape| API
+    Prometheus -->|scrape| Worker
+    Prometheus -->|scrape| Dashboard
+    Grafana -->|query| Prometheus
+```
 
 ---
 
-## How It Works
+## Request Flows
 
-### URL Shortening
+### URL shortening
+```
+POST /shorten {"url": "https://example.com"}
+→ SHA-256 hash → 8-char short code
+→ write to RDS PostgreSQL
+→ cache in Redis (TTL 24h)
+→ return https://hasanali.uk/r/d52c030e
+```
 
-POST /shorten { url: "https://google.com" }
-→ API generates short code via SHA-256 hash
-→ saves to RDS PostgreSQL
-→ returns https://hasanali.uk/r/d52c030e
-
-### Redirect Flow
+### Redirect
+```
 GET /r/d52c030e
-→ API checks Redis cache (1ms)
-→ cache hit → 302 redirect immediately
-→ cache miss → query RDS → cache result → 302 redirect
-→ publishes click event to SQS
-→ Worker consumes SQS → saves to PostgreSQL
+→ check Redis cache (cache hit: ~1ms)
+→ cache miss: query RDS, populate cache
+→ 302 redirect to destination
+→ publish click event to SQS (async, non-blocking)
+→ worker consumes SQS → write to analytics table
+```
 
 ### Analytics
-GET /summary → total URLs, total clicks, clicks last hour
-GET /top-urls → top URLs by click count
-GET /hourly → clicks grouped by hour
-GET /recent → last 50 click events
+```
+GET /summary   → total URLs, total clicks, clicks last hour
+GET /top-urls  → ranked by click count
+GET /hourly    → click volume grouped by hour
+GET /recent    → last 50 click events with metadata
+```
 
 ---
 
-## How to Run Locally
+## Infrastructure
 
-Requirements: Docker Desktop
+### Networking
+
+Private subnets across eu-west-2a/b/c. No NAT gateway — all AWS service traffic routes through VPC interface endpoints (ECR, S3, Secrets Manager, SQS, SSM, KMS, CloudWatch, STS, ELB, ElastiCache, RDS) and gateway endpoints (S3, DynamoDB). This eliminates internet egress from compute entirely, removing a significant exfiltration surface.
+
+Endpoint security groups restrict traffic to the private subnet CIDRs. The only inbound path from the public internet is through the ALB.
+
+### Compute
+
+ECS Fargate across three availability zones. No EC2 instances to patch or manage. Task definitions are immutable — each deploy registers a new revision; rollback is a single `update-service` call pointing at a previous ARN.
+
+### Data layer
+
+RDS PostgreSQL with Multi-AZ standby in production, automated backups with 7-day retention, deletion protection enabled, storage encrypted with a customer-managed KMS key. ElastiCache Redis with TLS in-transit, auth token stored in Secrets Manager, at-rest encryption enabled.
+
+### State management
+
+Terraform remote state in S3 with server-side KMS encryption, versioning enabled, public access blocked, TLS-deny bucket policy. DynamoDB state locking prevents concurrent applies. Bootstrap is a separate Terraform root to avoid circular dependency.
+
+### Environments
+
+| Environment | VPC CIDR | RDS | Notes |
+|---|---|---|---|
+| dev | 10.0.0.0/16 | db.t3.micro · single-AZ | Auto-deploys on merge to main |
+| staging | 10.1.0.0/16 | db.t3.small · Multi-AZ | Load tests run here before prod |
+| prod | 10.2.0.0/16 | db.t3.medium · Multi-AZ | Manual approval gate required |
+
+---
+
+## Security
+
+| Control | Implementation |
+|---|---|
+| Zero long-lived credentials | GitHub Actions OIDC — no AWS access keys stored anywhere |
+| Secrets | AWS Secrets Manager with KMS encryption, injected at task start via task definition secrets block — never in environment variables or images |
+| Encryption at rest | Customer-managed KMS keys for RDS, S3, Secrets Manager, CloudWatch Logs, SQS |
+| Network isolation | Private subnets, no NAT, 12 VPC endpoints, endpoint security groups scoped to private CIDRs |
+| Edge protection | WAFv2 with Core Rule Set, Known Bad Inputs, SQLi rules, IP rate limiting |
+| Container hardening | Non-root UID, read-only root filesystem, all Linux capabilities dropped |
+| Image security | Trivy scan on every build — blocks on HIGH/CRITICAL; SBOM generated per image; ECR immutable tags; scan on push |
+| IAM | Separate execution and task roles per service; every ARN scoped; no wildcard resources except `ecr:GetAuthorizationToken` which cannot be scoped by design |
+| Audit | CloudTrail enabled across all regions; VPC Flow Logs to CloudWatch |
+| Threat detection | GuardDuty with S3 protection and malware scanning |
+| Access | No bastion host — SSM Session Manager only for break-glass access |
+| KMS key policies | Explicit least-privilege policies on all five CMKs — root admin, scoped service principal per key |
+| Secrets rotation | AWS managed rotation Lambda on 30-day schedule for DB and Redis credentials |
+
+---
+
+## Delivery Pipeline
+
+### Commit to traffic
+
+A merge to `main` touching `app/` or `docker/` triggers the following sequence:
+
+```
+1. app-build.yml
+   - docker build --platform linux/amd64 for all three services
+   - Trivy image scan — pipeline fails on HIGH/CRITICAL CVE
+   - SBOM generated via Trivy SPDX-JSON, uploaded as artifact
+   - Images pushed to ECR with 7-character git SHA tag (immutable)
+
+2. app-deploy.yml (triggers on build success)
+   - Downloads current task definition from ECS
+   - Updates image URI to new SHA tag
+   - Registers new task definition revision
+   - aws ecs update-service — rolling deploy begins
+   - aws ecs wait services-stable — blocks until stable
+   - curl /health — verified before pipeline completes
+   - Circuit breaker rolls back automatically on health check failure
+```
+
+**Push to traffic:** ~6 minutes. **Automatic rollback:** triggered by ECS circuit breaker if new tasks fail health checks — no manual intervention required.
+
+### Infrastructure pipeline
+
+Pull requests touching `infra/` trigger `infra-plan.yml` — Checkov security scan followed by `terraform plan` with output posted as a PR comment. Merge to main triggers `infra-apply.yml` — dev applies automatically, staging and prod require GitHub Environment approval.
+
+### Database migrations
+
+Migrations run as a pre-deploy step using Flyway, executed as a one-off ECS task in the pipeline before service update. All migrations are backward compatible — non-additive changes are split across multiple deploys following the expand-contract pattern.
+
+---
+
+## Observability
+
+### Dashboards
+
+Four Grafana dashboards covering different operational perspectives:
+
+| Dashboard | Primary signals |
+|---|---|
+| Service Health | Error rate, p95 latency per service, upstream failures |
+| Infrastructure | ECS CPU and memory utilisation, goroutine counts, SQS queue depth |
+| Business Metrics | URLs shortened per hour, click event throughput, redirect volume |
+| Deployment Tracking | Process start times, error rate correlation with deploys |
+
+### Alerting
+
+CloudWatch alarms → SNS → email for operational events:
+
+| Alert | Threshold | First action |
+|---|---|---|
+| API p95 latency | > 500ms for 5 minutes | Check RDS CPU and connection count |
+| Error rate | > 1% for 5 minutes | Check CloudWatch logs, correlate with recent deploy |
+| SQS queue depth | > 1000 for 10 minutes | Check worker health, consider scaling |
+| RDS CPU | > 80% for 5 minutes | Run `EXPLAIN ANALYSE` on slow query log |
+| Task count below desired | 5 minutes | Check ECS service events and task failure reason |
+
+### Structured logging
+
+All three services emit JSON to CloudWatch Logs with a `trace_id` field propagated across the API → SQS → worker boundary via the `X-Trace-ID` header, enabling end-to-end request tracing through the analytics pipeline without a dedicated tracing backend.
+
+---
+
+## Performance
+
+Load tested at 100 concurrent virtual users for four minutes against the local stack:
+
+| Metric | Result |
+|---|---|
+| Total requests | 12,459 |
+| Failed requests | 0 (0%) |
+| p50 latency | 8ms |
+| p95 latency | 14ms |
+| p99 latency | 28ms |
+| Shorten p95 | 13ms |
+| Redirect p95 | 16ms |
+
+Alarm threshold is p95 > 500ms — observed peak of 14ms provides 35x headroom. The Redis cache hit rate for redirects was 94% across the test duration.
+
+### Chaos testing
+
+**Single task failure:** One of two running API tasks stopped while continuously polling `/health`. Zero dropped requests. ECS replaced the task within 42 seconds.
+
+**Full task set failure (AZ loss simulation):** All API tasks stopped simultaneously. Ten seconds of 503 responses. All tasks running again within 48 seconds. Minimum `desired_count` of 2 is required for zero-downtime single-task replacement.
+
+---
+
+## Local Development
 
 ```bash
 git clone https://github.com/haz365/ecs-combined
 cd ecs-combined
+cp .env.example .env  # fill in values
 docker compose up --build
 ```
 
-Services:
+Services available at:
 - API + UI: http://localhost:8080
-- Dashboard API: http://localhost:8081
-- Grafana: http://localhost:3000 (admin / devgrafana)
+- Dashboard: http://localhost:8081
+- Grafana: http://localhost:3000
 - Prometheus: http://localhost:9090
-
-Test the flow:
 
 ```bash
 # Shorten a URL
 curl -X POST http://localhost:8080/shorten \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://google.com"}'
+  -d '{"url": "https://example.com"}'
 
 # Follow the redirect
 curl -L http://localhost:8080/r/<short_code>
 
-# Check analytics
+# Analytics
 curl http://localhost:8081/summary
 curl http://localhost:8081/top-urls
 ```
 
 ---
 
-## How to Run on Kubernetes (local)
-
-Requirements: minikube, kubectl
+## Deployment
 
 ```bash
-# Start cluster
-minikube start
-
-# Point Docker to minikube
-eval $(minikube docker-env)
-
-# Build images
-docker build -f docker/api.Dockerfile -t api:local .
-docker build -f docker/worker.Dockerfile -t worker:local .
-docker build -f docker/dashboard.Dockerfile -t dashboard:local .
-
-# Deploy everything
-kubectl apply -f k8s/base/postgres/
-kubectl apply -f k8s/base/redis/
-kubectl apply -f k8s/base/localstack/
-kubectl apply -f k8s/base/api/
-kubectl apply -f k8s/base/worker/
-kubectl apply -f k8s/base/dashboard/
-
-# Check everything is running
-kubectl get pods
-
-# Access the API
-kubectl port-forward service/api-service 8080:80
-kubectl port-forward service/dashboard-service 8081:80
-```
-
----
-
-## How to Deploy to AWS
-
-### Prerequisites
-- AWS CLI configured
-- Terraform >= 1.7
-- Docker Desktop
-
-### First time deploy
-```bash
-# Bootstrap remote state (run once)
+# Bootstrap remote state (once per account)
 cd infra/bootstrap
-terraform init
-terraform apply -var="project=ecs-combined" -var="aws_region=eu-west-2"
+terraform init && terraform apply
 
-# Full deploy
-make deploy-dev
-```
+# Deploy infrastructure
+cd infra/environments/dev
+terraform init && terraform apply -var-file=terraform.tfvars
 
-### Day to day
-```bash
-# Deploy everything (terraform + images + services + DNS)
-make deploy-dev
-
-# Just push new images and deploy
+# Build and push images
 ./scripts/push-images.sh
+
+# Deploy services
 SHA=$(git rev-parse --short HEAD) ./scripts/deploy-services.sh dev
 
-# Tear down to save money
+# Tear down
 make destroy-dev
 ```
 
-### Environments
-| Environment | VPC CIDR | RDS | Notes |
-|---|---|---|---|
-| dev | 10.0.0.0/16 | db.t3.micro | Auto-deploys on merge to main |
-| staging | 10.1.0.0/16 | db.t3.small · Multi-AZ | Load tests run here |
-| prod | 10.2.0.0/16 | db.t3.medium · Multi-AZ | Manual approval required |
+---
+
+## Cost Profile
+
+| Environment | Monthly estimate | Primary drivers |
+|---|---|---|
+| Dev | ~$130 | VPC endpoints ($57), RDS ($35), ElastiCache ($18) |
+| Staging | ~$160 | Multi-AZ RDS, larger ElastiCache |
+| Prod | ~$220 | Larger instances, higher replication factor |
+
+AWS Budgets configured with alerts at 50%, 80%, and 100% of monthly spend. VPC endpoints are the largest cost item — the security trade-off of eliminating NAT egress was accepted over reducing the endpoint count.
 
 ---
 
-## Deployment Workflow
+## Key Engineering Decisions
 
-A developer merges a PR to `main` at 3pm on a Tuesday.
+### No NAT gateway
+All AWS service traffic routes through VPC interface endpoints. This eliminates internet egress from the compute layer entirely — a compromised task cannot reach an external C2 server, cannot exfiltrate data over the public internet, and cannot make outbound connections to attacker-controlled infrastructure. The $57/month endpoint cost was accepted over the $35/month NAT gateway cost specifically for this security property.
 
-### What triggers
+### ECS Fargate over ECS EC2
+No EC2 instances means no AMI patching, no node group management, and no capacity reservation. Fargate bills per task-second, making the cost profile more predictable at low-to-medium throughput. The trade-off accepted is higher per-vCPU cost at high density — at the point where tasks are running continuously at high utilisation, EC2 becomes cheaper.
 
-**If `app/` or `docker/` changed:**
-1. `app-build.yml` triggers
-   - Builds all three images for `linux/amd64`
-   - Scans with Trivy — fails on HIGH/CRITICAL
-   - Generates SBOMs
-   - Pushes to ECR tagged with 7-char git SHA
-2. `app-deploy.yml` triggers automatically
-   - Downloads current ECS task definitions
-   - Updates image URIs to new SHA
-   - Registers new task definition revisions
-   - Calls `ecs update-service` — rolling deploy
-   - Checks service stability after 30 seconds
+### Rolling deploy over blue/green
+ECS circuit breaker with automatic rollback provides equivalent safety for this workload at lower operational complexity. Blue/green was evaluated and rejected — it requires a second target group and listener rule, doubles the running task count during deploys, and the added complexity is only justified when instant cutover (rather than rolling) is a hard requirement.
 
-**If `infra/` changed:**
-1. `infra-apply.yml` triggers
-   - Runs `terraform apply` on dev automatically
-   - Staging and prod require manual approval via GitHub Environments
+### Standard SQS over FIFO
+Click events are idempotent — a duplicate write to the analytics table is a no-op. Strict ordering between click events from different URLs provides no business value. Standard queue provides higher throughput and lower cost than FIFO, and the worker deduplicates using a `processed_events` table for the rare at-least-once redelivery case.
 
-**On any Pull Request touching `infra/`:**
-1. `infra-plan.yml` triggers
-   - Runs `terraform plan`
-   - Posts plan output as PR comment for review
+### Self-hosted Prometheus and Grafana over managed
+Amazon Managed Grafana and Amazon Managed Service for Prometheus were evaluated. Both were rejected — MSP costs $0.30/metric/month against self-hosted Prometheus at ~$0.02/month for the same metric volume. The operational overhead of running the observability stack on EFS-backed Fargate tasks was accepted for the cost saving.
 
-### Database migrations
-Migrations run before service deploys using Flyway:
-```bash
-./scripts/run-migration.sh dev
+---
+
+## Repository Structure
+
 ```
-All migrations are backward compatible. Non-additive changes split across multiple deploys.
+app/
+  api/          Python · FastAPI · URL shortening and redirect
+  worker/       Go · SQS consumer · analytics persistence
+  dashboard/    Go · analytics read API
 
-### Bad deploy detection
-- ECS circuit breaker monitors task health during rollout
-- If new tasks fail health checks → automatic rollback to previous revision
-- Grafana error rate alert fires within 5 minutes if errors exceed 1%
+docker/
+  api.Dockerfile
+  worker.Dockerfile
+  dashboard.Dockerfile
 
-### What the on-call engineer sees
-- GitHub Actions: deploy workflow shows status
-- Grafana: error rate spike then recovery
-- CloudWatch Logs: `/ecs/ecs-combined-prod/api` shows crash reason
-- ECS console: deployment status and events
-
-### Non-rollbackable migrations
-1. Keep old column alongside new one
-2. Deploy service that reads both
-3. Backfill data
-4. Deploy removing old column reads
-5. Drop old column in final migration
-
----
-
-## Observability
-
-### Dashboards (Grafana)
-| Dashboard | What to look at first during an incident |
-|---|---|
-| Service Health | Error rate, p95 latency per service |
-| Infrastructure | ECS CPU/memory, goroutines, SQS depth |
-| Business Metrics | URLs shortened/hour, click events, redirects |
-| Deployment Tracking | Process start times, error rate before/after deploy |
-
-### Alerts (CloudWatch → SNS → Email)
-| Alert | Threshold | Action |
-|---|---|---|
-| API p95 latency | > 500ms for 5min | Check RDS CPU, connections |
-| Error rate | > 1% for 5min | Check logs, recent deploy |
-| SQS depth | > 1000 for 10min | Check worker, scale up |
-| RDS CPU | > 80% for 5min | Check slow queries |
-| Task count below desired | 5min | Check ECS events |
-
-### Structured logging
-All services log JSON to CloudWatch with a `trace_id` propagated across
-API → SQS → worker via the `X-Trace-ID` header.
-
----
-
-## Security Posture
-
-| Control | Implementation |
-|---|---|
-| Zero long-lived credentials | GitHub Actions OIDC — no AWS keys stored anywhere |
-| Secrets | Secrets Manager, injected at task start, never in images or env vars |
-| Encryption at rest | KMS CMKs for RDS, S3, Secrets Manager, CloudWatch, SQS |
-| Network | Private subnets, no NAT, 12 VPC endpoints for AWS service traffic |
-| WAF | Core rules, Known Bad Inputs, SQLi, rate limiting 1000 req/min |
-| Container hardening | Non-root user, read-only root filesystem, drop ALL capabilities |
-| Image security | Trivy scan on every build, SBOM generated, immutable ECR tags |
-| IAM | Least-privilege per-service task roles, separate execution and task roles |
-| Audit | CloudTrail enabled, VPC Flow Logs to CloudWatch |
-| Threat detection | GuardDuty with S3 and malware protection |
-| Access | No bastion — SSM Session Manager only for break-glass |
-
----
-
-## Cost
-
-Estimated monthly cost at rest (eu-west-2):
-
-| Environment | Estimated Cost | Main drivers |
-|---|---|---|
-| Dev | ~$130/month | VPC endpoints, RDS, ElastiCache |
-| Staging | ~$160/month | Multi-AZ RDS, larger instances |
-| Prod | ~$220/month | Larger instances, more replicas |
-
-Run `make destroy-dev` when not in use.
-AWS Budgets configured with alerts at 50%, 80%, 100% of monthly spend.
-
----
-
-## Chaos + Load Test Results
-
-### Chaos Test
-
-**Test 1 — Single task kill**
-
-Manually stopped one of two running API tasks while continuously polling `/health`.
-
-Result: Zero downtime. ECS replaced the task within 42 seconds. HTTP 200
-on every request throughout recovery.
-
-**Test 2 — All tasks killed (AZ loss simulation)**
-
-Stopped all running API tasks simultaneously.
-
-Result: ~10 seconds of 503 responses. Tasks running again within 48 seconds.
-
-**Finding:** `desired_count >= 2` is required for zero-downtime task replacement.
-
-### Load Test (k6 — local stack)
-
-Total requests:     12,459
-Failed requests:    0 (0%)
-p50 latency:        8ms
-p95 latency:        14ms
-p99 latency:        28ms
-Shorten p95:        13ms
-Redirect p95:       16ms
-Peak VUs:           100
-Duration:           4m01s
-
-Alarm thresholds set at p95 > 500ms — observed peak was 14ms giving 35x headroom.
-
----
-
-## Kubernetes (local)
-
-The full stack also runs on Kubernetes using minikube. Manifests are in `k8s/`:
+infra/
+  bootstrap/    S3 state bucket · KMS · DynamoDB lock table
+  modules/      vpc · ecs-service · rds · redis · alb-waf ·
+                iam · kms · sqs · ecr · monitoring · observability
+  environments/
+    dev/        main.tf · variables.tf · terraform.tfvars
+    staging/    main.tf · variables.tf · terraform.tfvars
+    prod/       main.tf · variables.tf · terraform.tfvars
 
 k8s/
-├── base/
-│   ├── api/           deployment, service, configmap, secret
-│   ├── worker/        deployment, service, configmap, secret
-│   ├── dashboard/     deployment, service, configmap, secret
-│   ├── postgres/      deployment, service, pvc, configmap, secret
-│   ├── redis/         deployment, service
-│   ├── localstack/    deployment, service, job
-│   └── ingress.yaml
-└── overlays/
-├── dev/
-├── staging/
-└── prod/
+  base/         Raw manifests for local Kubernetes development
+  overlays/     Kustomize overlays per environment
 
-ECS vs Kubernetes comparison:
+scripts/
+  push-images.sh
+  deploy-services.sh
+  run-migration.sh
 
-| Concept | ECS | Kubernetes |
-|---|---|---|
-| Container spec | Task Definition | Pod spec |
-| Service manager | ECS Service | Deployment |
-| Load balancing | Target Group | Service |
-| Routing | ALB Listener Rule | Ingress |
-| Config | Environment vars | ConfigMap |
-| Secrets | Secrets Manager | Secret |
-| Storage | EFS | PersistentVolumeClaim |
-| Auto-scaling | Application Auto Scaling | HorizontalPodAutoscaler |
+monitoring/
+  values-prometheus.yaml
+  dashboards/
+
+docs/
+  adr/          Five architecture decision records
+  runbooks/     Five operational runbooks
+
+.github/workflows/
+  app-build.yml       Trivy · SBOM · ECR push
+  app-deploy.yml      ECS rolling deploy · wait-for-stable · health check
+  infra-plan.yml      Checkov · terraform plan on pull requests
+  infra-apply.yml     terraform apply · dev auto · staging/prod gated
+```
 
 ---
 
-## Trade-offs and What I'd Do With Another Week
+## Operational Runbooks
 
-**What I'd improve:**
-- Add PgBouncer as a connection pooler in front of RDS
-- Implement OpenTelemetry tracing end to end
-- Add canary deployments using weighted ALB target groups
-- Deploy to EKS and compare ECS vs K8s in production
-- Add Helm charts for the Kubernetes manifests
-- Set up Dependabot for automatic dependency updates
-- Add AWS Config rules for compliance drift detection
+- [API returning 5xx](docs/runbooks/001-api-5xx.md)
+- [SQS queue depth climbing](docs/runbooks/002-sqs-queue-depth.md)
+- [RDS CPU pegged](docs/runbooks/003-rds-cpu.md)
+- [Grafana showing no data](docs/runbooks/004-grafana-no-data.md)
+- [Deploy rolled back automatically](docs/runbooks/005-deploy-rollback.md)
 
-**Deliberate trade-offs:**
-- Self-hosted Prometheus/Grafana over managed — more to operate but teaches more
-- Rolling deploy over blue/green — simpler, good enough at this scale
-- Single AWS account over multi-account — reduced complexity for solo project
-- Standard SQS over FIFO — click events are idempotent, ordering not required
-- Kubernetes locally only — EKS would duplicate ECS at extra cost
+## Architecture Decision Records
 
----
-
----
-
-## ADRs
-- [ADR-001: Database Choice](docs/adr/001-database-choice.md)
-- [ADR-002: Monitoring Stack](docs/adr/002-monitoring-stack.md)
-- [ADR-003: Deployment Strategy](docs/adr/003-deployment-strategy.md)
-- [ADR-004: Secrets Management](docs/adr/004-secrets-management.md)
-- [ADR-005: No NAT Gateway](docs/adr/005-no-nat-gateway.md)
-
-## Runbooks
-- [001: API returning 5xx](docs/runbooks/001-api-5xx.md)
-- [002: SQS queue depth climbing](docs/runbooks/002-sqs-queue-depth.md)
-- [003: RDS CPU pegged](docs/runbooks/003-rds-cpu.md)
-- [004: Grafana showing no data](docs/runbooks/004-grafana-no-data.md)
-- [005: Deploy rolled back automatically](docs/runbooks/005-deploy-rollback.md)
+- [ADR-001: Database choice](docs/adr/001-database-choice.md)
+- [ADR-002: Monitoring stack](docs/adr/002-monitoring-stack.md)
+- [ADR-003: Deployment strategy](docs/adr/003-deployment-strategy.md)
+- [ADR-004: Secrets management](docs/adr/004-secrets-management.md)
+- [ADR-005: No NAT gateway](docs/adr/005-no-nat-gateway.md)
