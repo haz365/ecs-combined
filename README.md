@@ -26,7 +26,7 @@ The analytics pipeline is fully asynchronous — the API publishes click events 
 
 ## Architecture
 
-![Architecture diagram](docs/images/architecture.png)
+![Architecture diagram](docs/images/ecs-architecture.svg)
 
 
 ## Request Flows
