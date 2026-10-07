@@ -26,25 +26,8 @@ The analytics pipeline is fully asynchronous — the API publishes click events 
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    User -->|HTTPS| R53[Route53\nhasanali.uk]
-    R53 --> ALB[ALB · WAFv2]
-    ALB --> API[api :8080\nPython · FastAPI]
-    API -->|redirect| Redis[(ElastiCache Redis\nTLS · auth token)]
-    API -->|write| RDS[(RDS PostgreSQL\nMulti-AZ · KMS)]
-    API -->|publish click| SQS[SQS\nclick-events · DLQ]
-    SQS -->|consume| Worker[worker :9091\nGo]
-    Worker -->|write analytics| RDS
-    ALB --> Dashboard[dashboard :8081\nGo]
-    Dashboard -->|read| RDS
-    Prometheus -->|scrape| API
-    Prometheus -->|scrape| Worker
-    Prometheus -->|scrape| Dashboard
-    Grafana -->|query| Prometheus
-```
+![Architecture diagram](docs/architecture.png)
 
----
 
 ## Request Flows
 
